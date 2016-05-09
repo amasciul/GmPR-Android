@@ -1,11 +1,13 @@
 package com.genymobile.pr.net;
 
+import com.genymobile.pr.BuildConfig;
 import com.genymobile.pr.model.Issue;
 import com.genymobile.pr.model.PullRequest;
 import com.genymobile.pr.model.Repo;
 
 import android.util.Base64;
 import okhttp3.OkHttpClient;
+import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Call;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
@@ -26,6 +28,10 @@ public class GitHubProvider {
         return api.getRepos(organization);
     }
 
+    public Call<List<Repo>> getWatchedRepos() {
+        return api.getWatchedRepos();
+    }
+
     public Call<List<PullRequest>> getPullRequests(String owner, String repo) {
         return api.getPullRequests(owner, repo);
     }
@@ -39,8 +45,12 @@ public class GitHubProvider {
         final String basic = HEADER_AUTHORIZATION_BASIC
                 + Base64.encodeToString(credentials.getBytes(), Base64.NO_WRAP);
 
+        HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor()
+                .setLevel(BuildConfig.DEBUG ? HttpLoggingInterceptor.Level.BODY : HttpLoggingInterceptor.Level.NONE);
+
         OkHttpClient httpClient = new OkHttpClient.Builder()
                 .addInterceptor(new AuthorizationInterceptor(basic))
+                .addInterceptor(loggingInterceptor)
                 .build();
 
         Retrofit retrofit = new Retrofit.Builder()

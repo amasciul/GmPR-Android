@@ -6,6 +6,7 @@ import com.genymobile.pr.bus.LoadingErrorEvent;
 import com.genymobile.pr.bus.NetworkErrorEvent;
 import com.genymobile.pr.bus.PullRequestsRetrievedEvent;
 import com.genymobile.pr.bus.ReposRetrievedEvent;
+import com.genymobile.pr.bus.SettingsUpdatedEvent;
 import com.genymobile.pr.model.PullRequest;
 import com.genymobile.pr.model.Repo;
 import com.genymobile.pr.net.GitHubProvider;
@@ -32,7 +33,6 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-
 import com.squareup.otto.Subscribe;
 
 import java.util.List;
@@ -62,10 +62,11 @@ public class PullRequestListFragment extends Fragment {
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        preferences = PreferenceManager.getDefaultSharedPreferences(getActivity());
 
         setHasOptionsMenu(true);
 
-        preferences = PreferenceManager.getDefaultSharedPreferences(getActivity());
+        BusProvider.getInstance().register(this);
     }
 
     @Nullable
@@ -151,22 +152,29 @@ public class PullRequestListFragment extends Fragment {
     }
 
     private void loadPullRequests() {
+        adapter.clear();
+
+        String repos = preferences.getString(getString(R.string.pref_repos), null);
+
         String login = preferences.getString(getString(R.string.pref_login), null);
         String password = preferences.getString(getString(R.string.pref_password), null);
         organization = preferences.getString(getString(R.string.pref_organization), null);
 
-        getActivity().setTitle(organization);
+        String watchedRepos = getString(R.string.pref_repos_watched);
+        boolean displayWatched = repos != null && repos.equals(watchedRepos);
+
+        String title = displayWatched ? getString(R.string.title_watched, login) : organization;
+        getActivity().setTitle(title);
+
         provider = new GitHubProvider(login, password);
         loadingOrNetworkErrorEncoutered = false;
         setLoadingState(STATE_LOADING);
 
-        provider.getRepos(organization).enqueue(new ReposCallback());
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        BusProvider.getInstance().register(this);
+        if (displayWatched) {
+            provider.getWatchedRepos().enqueue(new ReposCallback());
+        } else {
+            provider.getRepos(organization).enqueue(new ReposCallback());
+        }
     }
 
     @Subscribe
@@ -175,7 +183,7 @@ public class PullRequestListFragment extends Fragment {
         PullRequestsCallback callback = new PullRequestsCallback();
         List<Repo> repos = event.getRepos();
         for (Repo repo : repos) {
-            provider.getPullRequests(organization, repo.getName()).enqueue(callback);
+            provider.getPullRequests(repo.getOwner().getLogin(), repo.getName()).enqueue(callback);
         }
     }
 
@@ -227,6 +235,12 @@ public class PullRequestListFragment extends Fragment {
         // TODO use error/empty states (https://www.google.fr/design/spec/patterns/errors.html#errors-app-errors)
         errorTextView.setText(R.string.error_network);
         setLoadingState(STATE_ERROR);
+    }
+
+    @Subscribe
+    @SuppressWarnings("unused")
+    public void onSettingsUpdated(SettingsUpdatedEvent event) {
+        loadPullRequests();
     }
 
     public void openPullRequest(PullRequest pullRequest) {
@@ -281,8 +295,8 @@ public class PullRequestListFragment extends Fragment {
     }
 
     @Override
-    public void onPause() {
+    public void onDestroy() {
+        super.onDestroy();
         BusProvider.getInstance().unregister(this);
-        super.onPause();
     }
 }
